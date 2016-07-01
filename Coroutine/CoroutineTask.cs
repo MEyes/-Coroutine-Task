@@ -1,31 +1,34 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Coroutine
 {
+    //申明委托，将具体的操作交给开发人员
+    //CompletedHandler：完成时，接下来做什么
     public delegate void CompletedHandler(object result);
+    //ActionHandler:怎么做
     public delegate void ActionHandler(CoroutineTask previousTask, CompletedHandler onComplete, ErrorHandler onError);
+    //ErrorHandler：异常了，怎么做
     public delegate void ErrorHandler(Exception e);
+    //FinallyHandler：最后的扫尾工作
     public delegate void FinallyHandler();
-
+    /// <summary>
+    /// 代表协程任务
+    /// </summary>
     public class CoroutineTask
     {
+        private ActionHandler _onOnAction;
+        private CompletedHandler _onCompleted;
 
-        private ActionHandler onAction;
-        private CompletedHandler onCompleted;
-  
-        private ErrorHandler onError;
-        private FinallyHandler onFinally;
+        private ErrorHandler _onError;
+        private FinallyHandler _onFinally;
 
-        private CoroutineTask parentTask;
-        private CoroutineTask childTask;
-        public object Result { get;private set; }
-        public CoroutineTask(ActionHandler actionHandler)
+        private CoroutineTask _parentTask;
+        private CoroutineTask _childTask;
+        public object Result { get; private set; }
+
+        public CoroutineTask(ActionHandler onAction)
         {
-            onAction = actionHandler;
+            _onOnAction = onAction;
         }
 
         public T ResultAs<T>()
@@ -34,119 +37,142 @@ namespace Coroutine
             {
                 return (T) Result;
             }
-            else
-            {
-                throw new Exception("");
-            }
+            throw new Exception("cast failed");
         }
-        public CoroutineTask Then(ActionHandler actionHandler)
+
+        public CoroutineTask Then(ActionHandler onAction)
         {
-            CoroutineTask next=new CoroutineTask(actionHandler);
-            next.parentTask = this;
-            this.childTask = next;
+            var next = new CoroutineTask(onAction);
+            //设置父 Task
+            next._parentTask = this;
+            //设置子 Task
+            this._childTask = next;
             return next;
         }
-
-        public CoroutineTask Catch(ErrorHandler errorHandler)
+        /// <summary>
+        /// 捕获的异常，放在最外层
+        /// </summary>
+        /// <param name="onError"></param>
+        /// <returns></returns>
+        public CoroutineTask Catch(ErrorHandler onError)
         {
-            if (errorHandler != null)
+            if (onError != null)
             {
-                onError += errorHandler;
+                _onError += onError;
             }
 
             return this;
         }
-
-        public CoroutineTask Finally(FinallyHandler action)
+        /// <summary>
+        /// 扫尾工作，放在最外层
+        /// </summary>
+        /// <param name="onFinally"></param>
+        /// <returns></returns>
+        public CoroutineTask Finally(FinallyHandler onFinally)
         {
-            if (action != null)
+            if (onFinally != null)
             {
-                onFinally += action;
+                _onFinally += onFinally;
             }
 
             return this;
         }
-
-        public void Start(CompletedHandler completedHandler = null, ErrorHandler errorHandler = null)
+        /// <summary>
+        /// 启动 Coroutine Task
+        /// </summary>
+        /// <param name="onCompleted"></param>
+        /// <param name="onError"></param>
+        public void Start(CompletedHandler onCompleted = null, ErrorHandler onError = null)
         {
-            CoroutineTask rootTask = this;
-            while (rootTask.parentTask!=null)
+            var rootTask = this;
+            while (rootTask._parentTask != null)
             {
-                rootTask = rootTask.parentTask;
+                //循环，找到第一个 Task
+                rootTask = rootTask._parentTask;
             }
-            if (rootTask==this)
+            if (rootTask == this)
             {
-                rootTask.ExecuteTask(null,completedHandler,errorHandler);
+                rootTask.ExecuteTask(null, onCompleted, onError);
             }
             else
             {
-                if (completedHandler!=null)
+                //注意 this，代表离 Start 方法最近的 Task 实例
+                if (onCompleted != null)
                 {
-                    this.onCompleted += completedHandler;
+                    this._onCompleted += onCompleted;
                 }
-                if (errorHandler!=null)
+                if (onError != null)
                 {
-                    this.onError += errorHandler;
+                    this._onError += onError;
                 }
 
-                 rootTask.ExecuteTask(null,null,null);
-                
+                rootTask.ExecuteTask(null, null, null);
             }
-           
         }
-
-        private void ExecuteTask(CoroutineTask prevResult = null, CompletedHandler completedHandler = null, ErrorHandler errorHandler = null)
+        /// <summary>
+        /// 执行任务
+        /// </summary>
+        /// <param name="previousTask"></param>
+        /// <param name="onCompleted"></param>
+        /// <param name="onError"></param>
+        private void ExecuteTask(CoroutineTask previousTask = null, CompletedHandler onCompleted = null, ErrorHandler onError = null)
         {
-            if (completedHandler != null)
+            if (onCompleted != null)
             {
-                onCompleted += completedHandler;
+                _onCompleted += onCompleted;
             }
-            if (errorHandler!=null)
+            if (onError != null)
             {
-                onError += errorHandler;
+                _onError += onError;
             }
 
             try
             {
-                onAction(prevResult, Completed,Error);
+                //调用委托指向的方法
+                _onOnAction(previousTask, Completed, Error);
             }
             catch (Exception e)
             {
-                
                 Error(e);
             }
         }
-
+        /// <summary>
+        /// Completed，回掉此方法将执行下一个任务
+        /// </summary>
+        /// <param name="result"></param>
         private void Completed(object result)
         {
-            if (onCompleted != null)
+            if (_onCompleted != null)
             {
-                onCompleted(result);
+                _onCompleted(result);
             }
             Result = result;
-            if (childTask!=null)
+            if (_childTask != null)
             {
-                 childTask.ExecuteTask(this,null);
+                _childTask.ExecuteTask(this, null, null);
             }
-            if (onFinally!=null)
+            if (_onFinally != null)
             {
-                onFinally();
+                _onFinally();
             }
         }
-
+        /// <summary>
+        /// Error，回掉此方法将 Catch 异常
+        /// </summary>
+        /// <param name="e"></param>
         private void Error(Exception e)
         {
-            if (onError!=null)
+            if (_onError != null)
             {
-                onError(e);
+                _onError(e);
             }
-            if (childTask != null)
+            if (_childTask != null)
             {
-                childTask.Error(e);
+                _childTask.Error(e);
             }
-            if (onFinally != null)
+            if (_onFinally != null)
             {
-                onFinally();
+                _onFinally();
             }
         }
     }

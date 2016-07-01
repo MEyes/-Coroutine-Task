@@ -6,10 +6,10 @@ namespace Coroutine
     {
         static void Main(string[] args)
         {
-            CoroutineTask task=null;
             new CoroutineTask((prevResult, onComplete,onError) =>
             {
                 Console.WriteLine("1");
+              
                 onComplete(1);
             })
             .Then((prevResult, onComplete, onError) =>
@@ -18,11 +18,10 @@ namespace Coroutine
                 var x = prevResult.Result.ToString();
                 Console.WriteLine("2-"+x);
 
-                var xx=task.Result.ToString();
-
                 new CoroutineTask((a, b, c) =>
                 {
                     Console.WriteLine("a");
+                   
                     b("a");
                 })
                .Then((a, b,c) =>
@@ -30,7 +29,7 @@ namespace Coroutine
                     Console.WriteLine("b");
                     b("b");
                 })
-                .Start(onComplete);
+                .Start(onComplete,onError);
 
             })
             .Then((prevResult, onComplete, onError) =>
@@ -42,21 +41,22 @@ namespace Coroutine
                     Console.WriteLine("aa");
                     b("aa");
                 })
-               .Start(onComplete);
+               .Start(onComplete,onError);
             })
             .Then((prevResult, onComplete, onError) =>
             {
                 var z= prevResult.Result.ToString();
+               
                 Console.WriteLine("4-"+z);
                 onComplete(4);
             })
             .Catch((e) =>
             {
-                Console.WriteLine("异常:"+e.Message);
+                Console.WriteLine("throw a exception:"+e.Message);
             })
             .Finally(() =>
             {
-                Console.WriteLine("Finally");
+                Console.WriteLine("end");
             })
             .Start();
 
